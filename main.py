@@ -1,0 +1,126 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import stata
+from scipy import stats
+
+# Read the CSV file into a DataFrame
+df = pd.read_csv("C:\\Users\\HP\\Desktop\\python ca 2\\Landslide_Catalog_Export.csv")
+
+print(df.shape)
+print(df.head())
+print(df.columns)
+print("Null:- ", df.isnull().sum())
+
+# Select numeric columns to analyze
+numeric_cols = ['fatality_count', 'injury_count', 'admin_division_population', 'gazeteer_distance']
+df['source_name']=df['source_name'].replace(['', None, np.nan], 'No Name')
+
+# Fill missing values
+df[numeric_cols] = df[numeric_cols].fillna(0)
+
+# Handle dates
+df['event_date'] = pd.to_datetime(df['event_date'], errors='coerce')
+df['quarter'] = df['event_date'].dt.to_period('Q')  # ✅ This fixes the 'quarter' column issue
+
+# Detect outliers using IQR
+outlier_info = {}
+for col in numeric_cols:
+    Q1 = df[col].quantile(0.25)
+    Q3 = df[col].quantile(0.75)
+    IQR = Q3 - Q1
+    lower_bound = Q1 - 1.5 * IQR
+    upper_bound = Q3 + 1.5 * IQR
+    outliers = df[(df[col] < lower_bound) | (df[col] > upper_bound)]
+    outlier_info[col] = {
+        'num_outliers': len(outliers),
+        'lower_bound': lower_bound,
+        'upper_bound': upper_bound
+    }
+
+# Print outlier info
+for col, stats in outlier_info.items():
+    print(f"{col}:\n  Outliers: {stats['num_outliers']}\n  Lower Bound: {stats['lower_bound']:.2f}\n  Upper Bound: {stats['upper_bound']:.2f}\n")
+
+# Prepare data for tests
+df['trigger_type'] = df['landslide_trigger'].apply(lambda x: 'Rainfall' if 'rain' in str(x).lower() else 'Other')
+rain_fatalities = df[df['trigger_type'] == 'Rainfall']['fatality_count']
+other_fatalities = df[df['trigger_type'] == 'Other']['fatality_count']
+
+rain_injuries = df[df['trigger_type'] == 'Rainfall']['injury_count']
+other_injuries = df[df['trigger_type'] == 'Other']['injury_count']
+
+# Z-Test: Fatalities (assuming large sample and known population std deviation approx. by sample std)
+z_stat, z_p = stats.ttest_ind(rain_fatalities, other_fatalities, equal_var=True)
+print(f"\nZ-Test for Fatality Count (Rainfall vs Other):")
+print(f"Z-statistic: {z_stat:.3f}, P-value: {z_p:.3f}")
+
+# 1. Top 10 Countries
+plt.figure(figsize=(10, 6))
+top_countries = df['country_name'].value_counts().head(10)
+sns.barplot(x=top_countries.values, y=top_countries.index, palette='Blues_r')
+plt.title("Top 10 Countries by Landslide Frequency")
+plt.xlabel("Number of Landslides")
+plt.ylabel("Country")
+plt.tight_layout()
+plt.show()
+
+# 2. Scatter Plot: Fatalities vs Injuries
+plt.figure(figsize=(10, 6))
+sns.scatterplot(data=df, x='injury_count', y='fatality_count', alpha=0.6)
+plt.title("Fatalities vs Injuries")
+plt.xlabel("Injuries")
+plt.ylabel("Fatalities")
+plt.tight_layout()
+plt.show()
+
+# 3. Rain-triggered vs Other Triggers Pie Chart
+plt.figure(figsize=(8, 8))
+rain_pie = df['landslide_trigger'].apply(lambda x: 'Rainfall' if 'rain' in str(x).lower() else 'Other')
+rain_counts = rain_pie.value_counts()
+plt.pie(rain_counts, labels=rain_counts.index, autopct='%1.1f%%', colors=['skyblue', 'lightgray'])
+plt.title("Rainfall vs Other Triggers")
+plt.tight_layout()
+plt.show()
+
+# 4. Quarterly Landslide Trends
+plt.figure(figsize=(12, 6))
+quarterly_counts = df['quarter'].value_counts().sort_index()
+quarterly_counts.plot(kind='line', marker='o', color='green')
+plt.title("Quarterly Landslide Trends")
+plt.xlabel("Quarter")
+plt.ylabel("Number of Landslides")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+# 5. Correlation Heatmap
+plt.figure(figsize=(10, 6))
+sns.heatmap(df[numeric_cols].corr(), annot=True, cmap='coolwarm', fmt=".2f")
+plt.title("Correlation Between Numerical Variables")
+plt.tight_layout()
+plt.show()
+
+# 6. Pair Plot (Opens separately)
+sns.pairplot(df[numeric_cols])
+plt.suptitle("Pairplot of Numerical Columns", y=1.02)
+plt.show()
+
+# 7. Box Plots for Each Numeric Column
+plt.figure(figsize=(12, 8))
+for i, col in enumerate(numeric_cols, 1):
+    plt.subplot(2, 2, i)
+    sns.boxplot(y=df[col], color='lightblue')
+    plt.title(f'Boxplot of {col}')
+    plt.tight_layout()
+plt.show()
+
+# 8. Missing Value Heatmap (before filling if you want visual insight)
+plt.figure(figsize=(10, 5))
+sns.heatmap(df.isnull(), cbar=False, cmap='viridis', yticklabels=False)
+plt.title("Missing Data Heatmap")
+plt.tight_layout()
+plt.show()
+
+
